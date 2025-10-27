@@ -70,9 +70,9 @@ def main():
     
     # 文件上传
     uploaded_file = st.file_uploader(
-        "选择Excel文件", 
+        "选择Excel文件，上传菜品数据。请看右侧的注意事项（鼠标移到？处）。", 
         type=["xlsx", "xls"],
-        help="请上传包含菜品数据的Excel文件。请确保菜品名称的列为dish, 品牌为brand，并且只有一个季度的数据。"
+        help="请确保上传的文件是Excel文件，菜品名称的列为dish, 品牌为brand，并且只有一个季度的数据。"
     )
     
     if uploaded_file is not None:
@@ -196,5 +196,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 #streamlit.io.cloud
