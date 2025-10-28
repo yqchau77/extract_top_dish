@@ -2,7 +2,7 @@
 """
 Spyder 编辑器
 
-这是一个临时脚本文件。
+extract top dish based on 推荐数
 """
 
 import streamlit as st
@@ -10,17 +10,22 @@ import pandas as pd
 import io
 
 
-def read_excel_with_footer_issues(uploaded_file):
+def read_preview_excel(uploaded_file, rows=5):
     """
-    读取有底部Total和筛选器信息的Excel文件
+    读取Excel文件的前几行，仅获取列名及前几行数据供用户选择。
     """
-    # 读取整个Excel文件
-    df = pd.read_excel(uploaded_file, header=None)
+    df = pd.read_excel(uploaded_file, header=0, nrows=rows)
+    return df
+
+
+def read_full_excel(uploaded_file, column_names, footer_keywords=['Total', '应用的筛选器', '总计', '合计', '汇总']):
+    """
+    读取完整的Excel文件并处理底部信息
+    """
+    df = pd.read_excel(uploaded_file, header=0)
     
     # 查找数据结束位置（找到包含"Total"或"应用的筛选器"的行）
     end_row = None
-    footer_keywords = ['Total', '应用的筛选器', '总计', '合计', '汇总']  # 可以扩展更多关键词
-    
     for i, row in df.iterrows():
         # 检查当前行是否包含任何底部关键词
         row_contains_footer = False
@@ -34,35 +39,31 @@ def read_excel_with_footer_issues(uploaded_file):
             break
     
     if end_row is None:
-        # 如果没有找到底部信息，使用所有数据
         st.info("未检测到底部信息行，使用全部数据")
-        data_df = pd.read_excel(uploaded_file)
+        return df[column_names]
     else:
         # 只读取到底部信息之前的行
-        data_df = pd.read_excel(uploaded_file, nrows=end_row)
         st.info(f"已自动去除底部 {len(df) - end_row} 行信息")
-    
-    return data_df
+        return df[column_names].iloc[:end_row]
+
 
 def extract_top(df, keyword_column, index_column, extract_keyword_list, top_number):
     """
     提取TOP菜品
     """
-    # extract keyword
     df_keyword = df[df[keyword_column].isin(extract_keyword_list)]
     
     if df_keyword.empty:
         return df_keyword
     
-    # rank the keyword, filter out the first of each keyword based on index column
-    df_keyword = df_keyword.sort_values([keyword_column, index_column],
-                                        ascending=[True, False]).copy().reset_index(drop=True)
-    
+    # 排序
+    df_keyword = df_keyword.sort_values([keyword_column, index_column], ascending=[True, False]).copy().reset_index(drop=True)
     df_keyword['rank_by_keyword'] = df_keyword.groupby(keyword_column).cumcount() + 1
     
     top_df_keyword = df_keyword[df_keyword['rank_by_keyword'] <= top_number]
     
     return top_df_keyword
+
 
 def main():
     st.title("📊 菜品数据分析工具")
@@ -77,34 +78,31 @@ def main():
     
     if uploaded_file is not None:
         try:
-            # 读取数据（处理底部Total行）
-            with st.spinner("正在读取Excel文件..."):
-                df = read_excel_with_footer_issues(uploaded_file)
+            # 读取前5行数据，仅供用户选择列名
+            with st.spinner("正在读取Excel文件前5行..."):
+                df_preview = read_preview_excel(uploaded_file, rows=5)
             
-            st.success(f"文件读取成功！数据形状: {df.shape[0]} 行 × {df.shape[1]} 列")
+            st.success(f"文件读取成功！数据形状: {df_preview.shape[0]} 行 × {df_preview.shape[1]} 列")
             
             # 显示数据预览
-            st.subheader("数据预览")
-            st.dataframe(df.head())
+            st.subheader("数据预览（前5行）")
+            st.dataframe(df_preview)
             
-            # 显示所有列名
-            st.subheader("数据列信息")
-            st.write("所有可用的列:", list(df.columns))
-            
-            # 用户选择列
+            # 显示所有列名，供用户选择
+            st.subheader("选择列")
             col1, col2 = st.columns(2)
             
             with col1:
                 keyword_column = st.selectbox(
                     "选择关键词列",
-                    options=list(df.columns),
+                    options=list(df_preview.columns),
                     help="选择包含菜品关键词的列（如：品类、类型等）"
                 )
             
             with col2:
                 index_column = st.selectbox(
                     "选择推荐数列",
-                    options=list(df.columns),
+                    options=list(df_preview.columns),
                     help="选择用于排序的数值列（如：推荐数等）"
                 )
             
@@ -144,10 +142,13 @@ def main():
                     st.error("关键词列和推荐数列不能相同！")
                     return
                 
-                with st.spinner("正在提取TOP菜品..."):
+                # 读取完整Excel数据
+                with st.spinner("正在读取完整数据..."):
                     try:
+                        full_df = read_full_excel(uploaded_file, column_names=[keyword_column, index_column, 'dish', 'brand'])
+                        
                         result_df = extract_top(
-                            df=df,
+                            df=full_df,
                             keyword_column=keyword_column,
                             index_column=index_column,
                             extract_keyword_list=extract_keyword_list,
@@ -171,16 +172,14 @@ def main():
                             
                             # 下载结果
                             st.subheader("下载结果")
-                            # 修改下载结果的代码部分
                             output = io.BytesIO()
-                            with pd.ExcelWriter(output, engine='openpyxl') as writer:  # 改为使用 openpyxl
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
                                 result_df.to_excel(writer, sheet_name='TOP菜品', index=False)
                                 keyword_counts_df = keyword_counts.reset_index()
                                 keyword_counts_df.columns = ['关键词', '数量']
                                 keyword_counts_df.to_excel(writer, sheet_name='统计', index=False)
                             
                             output.seek(0)
-                            
                             st.download_button(
                                 label="下载Excel结果",
                                 data=output,
@@ -196,6 +195,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 #streamlit.io.cloud
+
