@@ -18,7 +18,7 @@ def read_preview_excel(uploaded_file, rows=5):
     return df
 
 
-def read_full_excel(uploaded_file, column_names, footer_keywords=['Total', '应用的筛选器', '总计', '合计', '汇总']):
+def read_full_excel_footer(uploaded_file, column_names, footer_keywords=['Total', '应用的筛选器', '总计', '合计', '汇总']):
     """
     读取完整的Excel文件并处理底部信息
     """
@@ -45,7 +45,20 @@ def read_full_excel(uploaded_file, column_names, footer_keywords=['Total', '应�
         # 只读取到底部信息之前的行
         st.info(f"已自动去除底部 {len(df) - end_row} 行信息")
         return df[column_names].iloc[:end_row]
+        
+def read_full_excel(uploaded_file, column_names=None):
+    """
+    读取完整的Excel文件，不检测footer。
+    """
+    df = pd.read_excel(uploaded_file, header=0)
 
+    # 如果用户选择了部分列
+    if column_names is not None:
+        available_cols = [c for c in column_names if c in df.columns]
+        df = df[available_cols]
+
+    st.info(f"已读取完整数据，共 {df.shape[0]} 行 × {df.shape[1]} 列")
+    return df
 
 def extract_top(df, keyword_column, index_column, extract_keyword_list, top_number):
     """
@@ -196,4 +209,5 @@ def main():
 if __name__ == "__main__":
     main()
 #streamlit.io.cloud
+
 
